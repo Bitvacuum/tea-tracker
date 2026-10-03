@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scooter's Tea Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#faf7f2;--fg:#2b2118;--card:#fff;--line:#e4dccf;--accent:#8a5a2b;--bad:#c0392b;--ok:#c9a227;--good:#2e8b57;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1713;--fg:#f1e9dd;--card:#2a231d;--line:#3d342b;--accent:#d9a066}}
+:root[data-theme="dark"]{--bg:#1c1713;--fg:#f1e9dd;--card:#2a231d;--line:#3d342b;--accent:#d9a066}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+input[type=text]{width:100%;box-sizing:border-box;padding:12px;font-size:1rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.labels{display:flex;justify-content:space-between;font-size:.85rem;margin-top:4px}
+input[type=range]{width:100%;margin:14px 0 0}
+button{width:100%;margin-top:12px;padding:12px;font-size:1rem;border:0;border-radius:8px;background:var(--accent);color:#fff}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.name{flex:1;min-width:0;overflow-wrap:anywhere}
+.track{position:relative;width:90px;height:8px;border-radius:4px;background:var(--line);flex:none}
+.knob{position:absolute;top:-5px;width:18px;height:18px;border-radius:50%;transform:translateX(-50%);border:2px solid var(--card)}
+.del{width:auto;margin:0;padding:4px 8px;background:transparent;color:var(--fg);opacity:.5;font-size:1.1rem}
+.tools{display:flex;gap:8px;margin-top:0}
+.tools button{margin-top:0;background:transparent;color:var(--accent);border:1px solid var(--accent)}
+textarea{width:100%;box-sizing:border-box;height:110px;margin-top:10px;padding:8px;font:.8rem monospace;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.status{font-size:.8rem;opacity:.65;text-align:center;margin-top:8px}
+[hidden]{display:none!important}
+.empty{opacity:.6;text-align:center;padding:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>🍵 Scooter's Tea Tracker</h1>
+<div class="card">
+  <input type="text" id="name" placeholder="Restaurant name" autocomplete="off">
+  <input type="range" id="score" min="-1" max="1" step="1" value="0">
+  <div class="labels"><span>Bad</span><span>Okay</span><span>Good</span></div>
+  <button id="add">Save</button>
+</div>
+<div class="card" id="list"></div>
+<div class="card">
+  <div class="tools"><button id="shr">Share / Save to…</button><button id="exp">Export</button><button id="imp">Import</button></div>
+  <input type="file" id="file" accept=".json,application/json,text/plain" hidden>
+  <div id="box" hidden>
+    <textarea id="ta" placeholder="Paste exported JSON here"></textarea>
+    <button id="go">Import pasted data</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+</main>
+<script>
+const KEY="teaTracker.v2",DOC="tea";
+let items=[],updated=0,doc=null;
+const $=id=>document.getElementById(id);
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));
+const colors={"-1":"var(--bad)","0":"var(--ok)","1":"var(--good)"};
+const pos={"-1":"10%","0":"50%","1":"90%"};
+function status(t){$("status").textContent=t}
+
+function normalize(list){
+  return (Array.isArray(list)?list:[]).filter(x=>x&&typeof x.name==="string"&&[-1,0,1].includes(Number(x.score)))
+    .map(x=>({id:x.id||uid(),name:x.name.trim().slice(0,200),score:String(Number(x.score))}));
+}
+function loadLocal(){
+  try{
+    const d=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem("teaTracker.v1")||"null");
+    if(Array.isArray(d)){items=normalize(d);updated=0}
+    else if(d){items=normalize(d.items);updated=d.updated||0}
+  }catch(e){}
+}
+function persist(){
+  updated=Date.now();
+  const payload={items,updated};
+  try{localStorage.setItem(KEY,JSON.stringify(payload))}catch(e){status("Warning: could not save on this device")}
+  if(doc){doc.set({json:JSON.stringify(payload)}).catch(()=>{})}
+}
+function render(){
+  const el=$("list");
+  if(!items.length){el.innerHTML='<div class="empty">No places yet.</div>';return}
+  el.innerHTML="";
+  items.forEach(it=>{
+    const r=document.createElement("div");r.className="row";
+    const n=document.createElement("div");n.className="name";n.textContent=it.name;
+    const t=document.createElement("div");t.className="track";
+    const k=document.createElement("div");k.className="knob";
+    k.style.left=pos[it.score];k.style.background=colors[it.score];
+    t.appendChild(k);
+    const d=document.createElement("button");d.className="del";d.textContent="\u2715";d.setAttribute("aria-label","Delete "+it.name);
+    d.onclick=()=>{if(confirm("Delete "+it.name+"?")){items=items.filter(x=>x.id!==it.id);persist();render()}};
+    r.append(n,t,d);el.appendChild(r);
+  });
+}
+$("add").onclick=()=>{
+  const name=$("name").value.trim();if(!name)return;
+  items.unshift({id:uid(),name,score:String($("score").value)});
+  persist();render();$("name").value="";$("score").value=0;
+};
+
+// ---- export / import ----
+function exportText(){return JSON.stringify({app:"tea-tracker",version:2,exported:new Date().toISOString(),items},null,2)}
+$("exp").onclick=async()=>{
+  const text=exportText(),fname="tea-tracker-"+new Date().toISOString().slice(0,10)+".json";
+  try{
+    const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;
+    if(dl){await dl.save({filename:fname,data:text});status("Export saved.");return}
+  }catch(e){if(e&&e.code==="declined")return}
+  // standalone: normal browser download
+  try{
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([text],{type:"application/json"}));
+    a.download=fname;document.body.appendChild(a);a.click();a.remove();
+    status("Export downloaded to your Downloads folder.");return;
+  }catch(e){}
+  // fallback: show text to copy
+  $("box").hidden=false;$("ta").value=text;$("go").hidden=true;
+  try{await navigator.clipboard.writeText(text);status("Export copied to clipboard (also shown below).")}
+  catch(e){$("ta").select();status("Copy the text below to back it up.")}
+};
+$("shr").onclick=async()=>{
+  const text=exportText(),fname="tea-tracker-"+new Date().toISOString().slice(0,10)+".json";
+  try{
+    const file=new File([text],fname,{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"Scooter's Tea Tracker backup"});
+      status("Shared.");
+    }else{status("File sharing isn't available here. Use Export instead.")}
+  }catch(e){if(!e||e.name!=="AbortError")status("Sharing failed. Use Export instead.")}
+};
+$("imp").onclick=()=>$("file").click();
+$("file").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{doImport(await f.text())}catch(err){status("Could not read that file.")}
+  e.target.value="";
+};
+$("go").onclick=()=>doImport($("ta").value);
+function doImport(text){
+  try{
+    const parsed=JSON.parse(text);
+    const incoming=normalize(Array.isArray(parsed)?parsed:parsed.items);
+    if(!incoming.length){status("No valid entries found.");return}
+    const have=new Set(items.map(x=>x.id));
+    const key=x=>x.name.toLowerCase()+"|"+x.score;
+    const haveKeys=new Set(items.map(key));
+    let added=0;
+    incoming.forEach(x=>{if(!have.has(x.id)&&!haveKeys.has(key(x))){items.push(x);added++}});
+    persist();render();status("Imported "+added+" new entr"+(added===1?"y":"ies")+" ("+(incoming.length-added)+" already present).");
+    $("box").hidden=true;$("ta").value="";
+  }catch(e){status("That doesn't look like a valid export.")}
+}
+
+// ---- startup ----
+loadLocal();render();
+if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{})}
+status("Saved on this device.");
+(async()=>{
+  try{
+    if(typeof claude==="undefined")return;
+    const [db,user]=await Promise.all([claude.use("db"),claude.use("user")]);
+    if(!db||!user)return;
+    const id=await user.id();if(!id)return;
+    const ref=db.collection("data/users/"+id).doc(DOC);
+    const snap=await ref.get();
+    if(snap.exists){
+      const remote=JSON.parse(snap.data().json);
+      if((remote.updated||0)>updated){items=normalize(remote.items);updated=remote.updated;
+        try{localStorage.setItem(KEY,JSON.stringify({items,updated}))}catch(e){}
+        render()}
+    }
+    doc=ref;
+    if(!snap.exists||updated>(JSON.parse(snap.data().json).updated||0)){await ref.set({json:JSON.stringify({items,updated})})}
+    status("Saved on this device and backed up to your account.");
+  }catch(e){}
+})();
+</script>
+</body>
+</html>

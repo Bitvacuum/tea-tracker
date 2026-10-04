@@ -54,6 +54,7 @@ textarea{width:100%;box-sizing:border-box;height:110px;margin-top:10px;padding:8
     <textarea id="ta" placeholder="Paste exported JSON here"></textarea>
     <button id="go">Import pasted data</button>
   </div>
+  <div class="status"><a href="#" id="pstlink" style="color:var(--accent)">Import from pasted text</a></div>
   <div class="status" id="status"></div>
 </div>
 </main>
@@ -133,15 +134,21 @@ $("exp").onclick=async()=>{
   catch(e){$("ta").select();status("Copy the text below to back it up.")}
 };
 $("shr").onclick=async()=>{
-  const text=exportText(),fname="tea-tracker-"+new Date().toISOString().slice(0,10)+".json";
+  const text=exportText(),stamp=new Date().toISOString().slice(0,10);
+  const title="Reality Bites: Tea Edition backup";
+  if(!navigator.share){status("Sharing isn't supported in this browser. Use Export instead.");return}
+  let err=null;
   try{
-    const file=new File([text],fname,{type:"application/json"});
+    const file=new File([text],"tea-backup-"+stamp+".txt",{type:"text/plain"});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:"Reality Bites: Tea Edition backup"});
-      status("Shared.");
-    }else{status("File sharing isn't available here. Use Export instead.")}
-  }catch(e){if(!e||e.name!=="AbortError")status("Sharing failed. Use Export instead.")}
+      await navigator.share({files:[file],title});status("Shared.");return;
+    }
+    await navigator.share({title,text});
+    status("Shared as text. Save it somewhere safe; to restore, use 'Import from pasted text'.");return;
+  }catch(e){if(e&&e.name==="AbortError")return;err=e}
+  status("Sharing failed ("+((err&&err.name)||"unknown")+"). Use Export instead.");
 };
+$("pstlink").onclick=e=>{e.preventDefault();$("box").hidden=false;$("go").hidden=false;$("ta").value="";$("ta").focus()};
 $("imp").onclick=()=>$("file").click();
 $("file").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;

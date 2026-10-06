@@ -1,6 +1,6 @@
 {
-  "name": "Reality Bites: Tea Edition",
-  "short_name": "Reality Bites",
+  "name": "Tea Bags",
+  "short_name": "Tea Bags",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
